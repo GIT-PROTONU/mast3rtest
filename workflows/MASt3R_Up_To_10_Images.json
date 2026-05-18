@@ -1,0 +1,360 @@
+{
+  "last_node_id": 22,
+  "last_link_id": 14,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Note",
+      "pos": [40, 40],
+      "size": [820, 320],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "MASt3R 3D Reconstruction — Up to 10 Images\n\nHOW TO LOAD IMAGES (1 to 10 photos of the same scene):\n  • Two Load Image nodes (#1, #2) are ENABLED by default. Click 'choose file to upload' on each and pick photos taken from different angles.\n  • To use MORE images: right-click any greyed-out Load Image node (#3 through #10) → Mode → Always, then upload a photo.\n  • To turn one off again: right-click → Mode → Never.\n  • The MASt3R Image Batch node automatically gathers all enabled images.\n\nTIPS FOR GOOD RECONSTRUCTIONS:\n  • Move your position between shots (sideways, not just rotating the camera).\n  • 30-60% overlap between adjacent images works best.\n  • Same camera/lens for all shots → keep shared_intrinsics = true.\n\nVRAM ON 8GB / RTX 4070:\n  • 2-3 images @ image_size=384: comfortable.\n  • 4-6 images @ image_size=384: tight; drop to 256 if you OOM.\n  • 7-10 images @ image_size=384: switch scenegraph_type from 'complete' to 'swin' (winsize ≈ 3) or 'oneref' to avoid quadratic blow-up.\n\nThe reconstructed 3D scene + camera frustums appear in the Preview 3D node on the right when the run finishes."
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Mast3rLoader",
+      "pos": [40, 400],
+      "size": [340, 80],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "model", "type": "MAST3R_MODEL", "links": [3], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rLoader"},
+      "widgets_values": ["MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth", "cuda"]
+    },
+
+    {
+      "id": 3,
+      "type": "LoadImage",
+      "pos": [40, 520],
+      "size": [280, 320],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [4], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #1"
+    },
+    {
+      "id": 4,
+      "type": "LoadImage",
+      "pos": [340, 520],
+      "size": [280, 320],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [5], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #2"
+    },
+    {
+      "id": 5,
+      "type": "LoadImage",
+      "pos": [640, 520],
+      "size": [280, 320],
+      "flags": {},
+      "order": 4,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [6], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #3 (muted — right-click → Mode → Always to enable)"
+    },
+    {
+      "id": 6,
+      "type": "LoadImage",
+      "pos": [940, 520],
+      "size": [280, 320],
+      "flags": {},
+      "order": 5,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [7], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #4 (muted)"
+    },
+    {
+      "id": 7,
+      "type": "LoadImage",
+      "pos": [1240, 520],
+      "size": [280, 320],
+      "flags": {},
+      "order": 6,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [8], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #5 (muted)"
+    },
+
+    {
+      "id": 8,
+      "type": "LoadImage",
+      "pos": [40, 860],
+      "size": [280, 320],
+      "flags": {},
+      "order": 7,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [9], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #6 (muted)"
+    },
+    {
+      "id": 9,
+      "type": "LoadImage",
+      "pos": [340, 860],
+      "size": [280, 320],
+      "flags": {},
+      "order": 8,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [10], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #7 (muted)"
+    },
+    {
+      "id": 10,
+      "type": "LoadImage",
+      "pos": [640, 860],
+      "size": [280, 320],
+      "flags": {},
+      "order": 9,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [11], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #8 (muted)"
+    },
+    {
+      "id": 11,
+      "type": "LoadImage",
+      "pos": [940, 860],
+      "size": [280, 320],
+      "flags": {},
+      "order": 10,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [12], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #9 (muted)"
+    },
+    {
+      "id": 12,
+      "type": "LoadImage",
+      "pos": [1240, 860],
+      "size": [280, 320],
+      "flags": {},
+      "order": 11,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [13], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Image #10 (muted)"
+    },
+
+    {
+      "id": 13,
+      "type": "Mast3rImageBatch",
+      "pos": [1560, 520],
+      "size": [320, 280],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {"name": "image_1", "type": "IMAGE", "link": 4, "shape": 7},
+        {"name": "image_2", "type": "IMAGE", "link": 5, "shape": 7},
+        {"name": "image_3", "type": "IMAGE", "link": 6, "shape": 7},
+        {"name": "image_4", "type": "IMAGE", "link": 7, "shape": 7},
+        {"name": "image_5", "type": "IMAGE", "link": 8, "shape": 7},
+        {"name": "image_6", "type": "IMAGE", "link": 9, "shape": 7},
+        {"name": "image_7", "type": "IMAGE", "link": 10, "shape": 7},
+        {"name": "image_8", "type": "IMAGE", "link": 11, "shape": 7},
+        {"name": "image_9", "type": "IMAGE", "link": 12, "shape": 7},
+        {"name": "image_10", "type": "IMAGE", "link": 13, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "images", "type": "IMAGE", "links": [14], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rImageBatch"},
+      "widgets_values": []
+    },
+
+    {
+      "id": 14,
+      "type": "Mast3rRun",
+      "pos": [1920, 400],
+      "size": [400, 660],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MAST3R_MODEL", "link": 3},
+        {"name": "images", "type": "IMAGE", "link": 14, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "glb_path", "type": "STRING", "links": [1], "slot_index": 0},
+        {"name": "scene", "type": "MAST3R_SCENE", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "Mast3rRun"},
+      "widgets_values": [
+        "cuda",
+        "",
+        384,
+        "complete",
+        "Auto (first available)",
+        "",
+        3,
+        false,
+        0,
+        "refine+depth",
+        0.07,
+        300,
+        0.01,
+        300,
+        1.5,
+        0.0,
+        0.2,
+        0.0,
+        true,
+        false,
+        true,
+        false,
+        true
+      ]
+    },
+
+    {
+      "id": 15,
+      "type": "Mast3rGLBViewer",
+      "pos": [2360, 400],
+      "size": [280, 80],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {"name": "glb_path", "type": "STRING", "link": 1, "widget": {"name": "glb_path"}}
+      ],
+      "outputs": [
+        {"name": "model_file", "type": "STRING", "links": [2], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rGLBViewer"},
+      "widgets_values": [""]
+    },
+
+    {
+      "id": 16,
+      "type": "Preview3D",
+      "pos": [2680, 400],
+      "size": [600, 580],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model_file",
+          "type": "STRING,FILE_3D_GLB,FILE_3D_GLTF,FILE_3D_FBX,FILE_3D_OBJ,FILE_3D_STL,FILE_3D_USDZ,FILE_3D",
+          "link": 2,
+          "widget": {"name": "model_file"}
+        }
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "Preview3D"},
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 14, 0, 15, 0, "STRING"],
+    [2, 15, 0, 16, 0, "STRING"],
+    [3, 2, 0, 14, 0, "MAST3R_MODEL"],
+    [4, 3, 0, 13, 0, "IMAGE"],
+    [5, 4, 0, 13, 1, "IMAGE"],
+    [6, 5, 0, 13, 2, "IMAGE"],
+    [7, 6, 0, 13, 3, "IMAGE"],
+    [8, 7, 0, 13, 4, "IMAGE"],
+    [9, 8, 0, 13, 5, "IMAGE"],
+    [10, 9, 0, 13, 6, "IMAGE"],
+    [11, 10, 0, 13, 7, "IMAGE"],
+    [12, 11, 0, 13, 8, "IMAGE"],
+    [13, 12, 0, 13, 9, "IMAGE"],
+    [14, 13, 0, 14, 1, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "title": "Images (1-5)",
+      "bounding": [30, 500, 1500, 360],
+      "color": "#3f789e",
+      "font_size": 18,
+      "flags": {}
+    },
+    {
+      "title": "Images (6-10) — all muted by default",
+      "bounding": [30, 840, 1500, 360],
+      "color": "#a1309b",
+      "font_size": 18,
+      "flags": {}
+    },
+    {
+      "title": "Pipeline",
+      "bounding": [1550, 380, 1740, 700],
+      "color": "#629b3f",
+      "font_size": 18,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

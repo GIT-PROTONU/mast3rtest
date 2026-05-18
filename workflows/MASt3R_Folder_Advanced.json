@@ -1,0 +1,155 @@
+{
+  "last_node_id": 7,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Note",
+      "pos": [40, 40],
+      "size": [800, 280],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "MASt3R — Folder Input + Precision Tuning + Solidify + WASD Viewer\n\nPIPELINE:\n  Folder Input → Reconstruction → Mesh Filter → Solidify → 3D Viewer\n\nSTEP 1 — Pick your folder (left).\nSTEP 2 — Queue Prompt.\nSTEP 3 — Use the viewer (right): orbit, WASD, fullscreen, grid toggle, brightness, etc.\n\nWHAT EACH NODE TUNES:\n  • MASt3R 3D Reconstruction — niter=700, min_conf_thr=2.0, matching_conf_thr=1.0, TSDF_thresh=0.15 are all dialled up for precision over speed.\n  • Mesh Filter — passthrough by default; switch smoothing to 'taubin' iters 2-3 if surface is noisy.\n  • Solidify (NEW) — turns the patchy surface into a filled mesh:\n      voxel_close (default): voxelize + dilation + closing → fills small/medium gaps.\n      voxel_fill: only thicken; keeps holes intact.\n      convex_hull: shrink-wraps whole scene (use only for simple convex objects).\n      passthrough: skip solidify, use raw MASt3R output.\n  • voxel_resolution = 220 is a good balance (8GB RAM safe).  Bump to 350-400 for fine detail (slow).\n  • dilation/closing — raise both to fill bigger gaps.\n\nVRAM (8GB / RTX 4070):\n  • complete @ 512 for 6-12 images: comfortable.\n  • If OOM: drop image_size to 448 or switch scenegraph_type to swin."
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Mast3rLoader",
+      "pos": [40, 340],
+      "size": [340, 80],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "model", "type": "MAST3R_MODEL", "links": [1], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rLoader"},
+      "widgets_values": ["MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth", "cuda"]
+    },
+    {
+      "id": 3,
+      "type": "Mast3rFolderInput",
+      "pos": [40, 460],
+      "size": [340, 180],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "folder_path", "type": "STRING", "links": [2], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rFolderInput"},
+      "widgets_values": [""]
+    },
+    {
+      "id": 4,
+      "type": "Mast3rRun",
+      "pos": [440, 340],
+      "size": [400, 700],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MAST3R_MODEL", "link": 1},
+        {"name": "images", "type": "IMAGE", "link": null, "shape": 7},
+        {"name": "image_folder_path", "type": "STRING", "link": 2, "widget": {"name": "image_folder_path"}}
+      ],
+      "outputs": [
+        {"name": "glb_path", "type": "STRING", "links": [3], "slot_index": 0},
+        {"name": "scene", "type": "MAST3R_SCENE", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "Mast3rRun"},
+      "widgets_values": [
+        "cuda",
+        "",
+        512,
+        "complete",
+        "Auto (first available)",
+        "",
+        3,
+        true,
+        0,
+        "refine+depth",
+        0.07,
+        700,
+        0.014,
+        700,
+        2.0,
+        1.0,
+        0.1,
+        0.15,
+        false,
+        false,
+        true,
+        false,
+        true
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Mast3rMeshFilter",
+      "pos": [880, 340],
+      "size": [380, 280],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "glb_path", "type": "STRING", "link": 3, "widget": {"name": "glb_path"}}
+      ],
+      "outputs": [
+        {"name": "glb_path", "type": "STRING", "links": [4], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rMeshFilter"},
+      "widgets_values": ["", "none", 2, 0.3, false, false, true, 0.0]
+    },
+    {
+      "id": 7,
+      "type": "Mast3rSolidify",
+      "pos": [880, 660],
+      "size": [380, 320],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "glb_path", "type": "STRING", "link": 4, "widget": {"name": "glb_path"}}
+      ],
+      "outputs": [
+        {"name": "glb_path", "type": "STRING", "links": [5], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rSolidify"},
+      "widgets_values": ["", "voxel_close", 220, 1, 3, 3, true, true]
+    },
+    {
+      "id": 6,
+      "type": "Mast3rViewer3D",
+      "pos": [1300, 340],
+      "size": [1180, 700],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "glb_path", "type": "STRING", "link": 5, "widget": {"name": "glb_path"}}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "Mast3rViewer3D"},
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 2, 0, 4, 0, "MAST3R_MODEL"],
+    [2, 3, 0, 4, 2, "STRING"],
+    [3, 4, 0, 5, 0, "STRING"],
+    [4, 5, 0, 7, 0, "STRING"],
+    [5, 7, 0, 6, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

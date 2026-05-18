@@ -1,0 +1,180 @@
+{
+  "last_node_id": 8,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Note",
+      "pos": [40, 40],
+      "size": [520, 260],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "MASt3R 3D Reconstruction — 2-Image Template\n\nHOW TO USE:\n1. On each Load Image node below, click 'choose file to upload' and pick a photo. Both photos must be of the SAME scene from DIFFERENT angles (e.g. step left/right between shots).\n2. Click 'Queue Prompt' (top-right).\n3. The reconstructed 3D scene (point cloud + camera frustums) appears in the Preview 3D node on the right.\n   - Drag = orbit, scroll = zoom, right-drag = pan.\n   - Each colored pyramid is one input camera's position.\n4. GLB file is also saved to ComfyUI's output folder for download.\n\nVRAM TIPS (8GB / RTX 4070):\n- image_size = 384 is the safe default. If you get OOM (out of memory) errors, drop to 256.\n- Stick with scenegraph_type = 'complete' for 2-4 images.\n\nFOR MORE IMAGES:\n- Easiest: set image_folder_path on the MASt3R 3D Reconstruction node to a folder you fill with photos, then right-click the Batch Images node → Bypass.\n- Or duplicate the Load Image + Batch Images pattern."
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Mast3rLoader",
+      "pos": [40, 340],
+      "size": [340, 80],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "model", "type": "MAST3R_MODEL", "links": [1], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rLoader"},
+      "widgets_values": ["MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth", "cuda"]
+    },
+    {
+      "id": 3,
+      "type": "LoadImage",
+      "pos": [40, 460],
+      "size": [340, 340],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [2], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Load Image #1"
+    },
+    {
+      "id": 4,
+      "type": "LoadImage",
+      "pos": [40, 840],
+      "size": [340, 340],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [3], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png"],
+      "title": "Load Image #2"
+    },
+    {
+      "id": 5,
+      "type": "ImageBatch",
+      "pos": [420, 640],
+      "size": [220, 60],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "image1", "type": "IMAGE", "link": 2},
+        {"name": "image2", "type": "IMAGE", "link": 3}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [4], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "ImageBatch"},
+      "widgets_values": []
+    },
+    {
+      "id": 6,
+      "type": "Mast3rRun",
+      "pos": [700, 340],
+      "size": [400, 660],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MAST3R_MODEL", "link": 1},
+        {"name": "images", "type": "IMAGE", "link": 4, "shape": 7}
+      ],
+      "outputs": [
+        {"name": "glb_path", "type": "STRING", "links": [5], "slot_index": 0},
+        {"name": "scene", "type": "MAST3R_SCENE", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "Mast3rRun"},
+      "widgets_values": [
+        "cuda",
+        "",
+        384,
+        "complete",
+        "Auto (first available)",
+        "",
+        3,
+        false,
+        0,
+        "refine+depth",
+        0.07,
+        300,
+        0.01,
+        300,
+        1.5,
+        0.0,
+        0.2,
+        0.0,
+        true,
+        false,
+        true,
+        false,
+        true
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Mast3rGLBViewer",
+      "pos": [1140, 340],
+      "size": [280, 80],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "glb_path", "type": "STRING", "link": 5, "widget": {"name": "glb_path"}}
+      ],
+      "outputs": [
+        {"name": "model_file", "type": "STRING", "links": [6], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rGLBViewer"},
+      "widgets_values": [""]
+    },
+    {
+      "id": 8,
+      "type": "Preview3D",
+      "pos": [1460, 340],
+      "size": [560, 540],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model_file",
+          "type": "STRING,FILE_3D_GLB,FILE_3D_GLTF,FILE_3D_FBX,FILE_3D_OBJ,FILE_3D_STL,FILE_3D_USDZ,FILE_3D",
+          "link": 6,
+          "widget": {"name": "model_file"}
+        }
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "Preview3D"},
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 2, 0, 6, 0, "MAST3R_MODEL"],
+    [2, 3, 0, 5, 0, "IMAGE"],
+    [3, 4, 0, 5, 1, "IMAGE"],
+    [4, 5, 0, 6, 1, "IMAGE"],
+    [5, 6, 0, 7, 0, "STRING"],
+    [6, 7, 0, 8, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
