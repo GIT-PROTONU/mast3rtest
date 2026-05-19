@@ -146,6 +146,17 @@ try:
 except Exception as _solid_err:
     print(f"## MASt3R: Solidify node failed to load: {_solid_err}")
 
+try:
+    from .charuco_scale import (
+        NODE_CLASS_MAPPINGS as _CHARUCO_CLASS_MAPPINGS,
+        NODE_DISPLAY_NAME_MAPPINGS as _CHARUCO_DISPLAY_MAPPINGS,
+    )
+    NODE_CLASS_MAPPINGS.update(_CHARUCO_CLASS_MAPPINGS)
+    NODE_DISPLAY_NAME_MAPPINGS.update(_CHARUCO_DISPLAY_MAPPINGS)
+    print("## MASt3R: ChArUco scale calibration node loaded")
+except Exception as _charuco_err:
+    print(f"## MASt3R: ChArUco scale calibration node failed to load: {_charuco_err}")
+
 WEB_DIRECTORY = "./web"
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']

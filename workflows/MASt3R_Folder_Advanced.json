@@ -42,7 +42,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "folder_path", "type": "STRING", "links": [2], "slot_index": 0}
+        {"name": "folder_path", "type": "STRING", "links": [2, 7], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "Mast3rFolderInput"},
       "widgets_values": [""]
@@ -62,7 +62,7 @@
       ],
       "outputs": [
         {"name": "glb_path", "type": "STRING", "links": [3], "slot_index": 0},
-        {"name": "scene", "type": "MAST3R_SCENE", "links": null, "slot_index": 1}
+        {"name": "scene", "type": "MAST3R_SCENE", "links": [6], "slot_index": 1}
       ],
       "properties": {"Node name for S&R": "Mast3rRun"},
       "widgets_values": [
@@ -126,19 +126,39 @@
       "widgets_values": ["", "poisson", 320, 1, 2, 1, true, true, 300000, 9, 0.02, true]
     },
     {
+      "id": 8,
+      "type": "Mast3rCharucoScale",
+      "pos": [880, 1010],
+      "size": [380, 400],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "glb_path", "type": "STRING", "link": 5, "widget": {"name": "glb_path"}},
+        {"name": "scene", "type": "MAST3R_SCENE", "link": 6},
+        {"name": "image_folder_path", "type": "STRING", "link": 7, "widget": {"name": "image_folder_path"}}
+      ],
+      "outputs": [
+        {"name": "glb_path", "type": "STRING", "links": [8], "slot_index": 0},
+        {"name": "scale_factor", "type": "FLOAT", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "Mast3rCharucoScale"},
+      "widgets_values": ["", "", 7, 5, 30.0, 22.0, "DICT_5X5_100", "mm", 3.0, true]
+    },
+    {
       "id": 6,
       "type": "Mast3rViewer3D",
       "pos": [1300, 340],
       "size": [1180, 700],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
-        {"name": "glb_path", "type": "STRING", "link": 5, "widget": {"name": "glb_path"}}
+        {"name": "glb_path", "type": "STRING", "link": 8, "widget": {"name": "glb_path"}}
       ],
       "outputs": [],
       "properties": {"Node name for S&R": "Mast3rViewer3D"},
-      "widgets_values": ["", true, 0.5]
+      "widgets_values": ["", true, 1.0]
     }
   ],
   "links": [
@@ -146,7 +166,10 @@
     [2, 3, 0, 4, 2, "STRING"],
     [3, 4, 0, 5, 0, "STRING"],
     [4, 5, 0, 7, 0, "STRING"],
-    [5, 7, 0, 6, 0, "STRING"]
+    [5, 7, 0, 8, 0, "STRING"],
+    [6, 4, 1, 8, 1, "MAST3R_SCENE"],
+    [7, 3, 0, 8, 2, "STRING"],
+    [8, 8, 0, 6, 0, "STRING"]
   ],
   "groups": [],
   "config": {},
