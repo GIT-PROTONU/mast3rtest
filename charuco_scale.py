@@ -104,6 +104,16 @@ class Mast3rCharucoScale:
                     {"default": True, "label_on": "on", "label_off": "off",
                      "tooltip": "Master on/off. When off, GLB passes through unchanged (scale_factor=1.0)."},
                 ),
+                "min_detect_squares_x": (
+                    "INT",
+                    {"default": 0, "min": 0, "max": 40, "step": 1,
+                     "tooltip": "[chessboard only] If >0 and < squares_x, sweep pattern sizes from squares_x down to this value to allow partial-board views. 0 disables the sweep (must see whole board)."},
+                ),
+                "min_detect_squares_y": (
+                    "INT",
+                    {"default": 0, "min": 0, "max": 40, "step": 1,
+                     "tooltip": "[chessboard only] Same as min_detect_squares_x for the Y axis. Tip: set both to 4 to detect any 4x4-or-bigger contiguous chessboard region."},
+                ),
             },
         }
 
@@ -160,12 +170,40 @@ class Mast3rCharucoScale:
         flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK
         ret, corners = cv2.findChessboardCorners(gray, pattern_size, flags)
         if not ret or corners is None:
-            return None, None
+            return None
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
         corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-        corners = corners.reshape(-1, 2)
-        ids = np.arange(len(corners), dtype=np.int32)
-        return corners, ids
+        return corners.reshape(-1, 2)
+
+    def _detect_chessboard_sweep(self, cv2, gray, max_interior, min_interior):
+        """Try chessboard detection at multiple sub-pattern sizes.
+
+        max_interior, min_interior are (nx, ny) interior-corner counts (pattern_size in cv2 terms).
+        Returns (corners_Nx2, pattern_size_used) or (None, None). Sweeps largest-first so partial
+        views still extract as many corners as possible.
+        """
+        max_x, max_y = max_interior
+        min_x, min_y = min_interior
+        if min_x > max_x or min_y > max_y:
+            return None, None
+
+        # Build candidate sizes: largest area first, square-ish before extreme aspect.
+        candidates = []
+        for nx in range(max_x, min_x - 1, -1):
+            for ny in range(max_y, min_y - 1, -1):
+                if nx < 2 or ny < 2:
+                    continue
+                # Score: prefer larger total corners + closer-to-square aspect.
+                area = nx * ny
+                ar_penalty = abs(nx - ny)
+                candidates.append((-area, ar_penalty, nx, ny))
+        candidates.sort()
+
+        for _, _, nx, ny in candidates:
+            corners = self._detect_chessboard(cv2, gray, (nx, ny))
+            if corners is not None:
+                return corners, (nx, ny)
+        return None, None
 
     def _chessboard_known_corners(self, pattern_size, square_size_mm):
         nx, ny = pattern_size
@@ -226,6 +264,8 @@ class Mast3rCharucoScale:
         output_unit,
         outlier_mad_k,
         enabled=True,
+        min_detect_squares_x=0,
+        min_detect_squares_y=0,
     ):
         if not enabled:
             print("Mast3rCharucoScale: disabled, passing GLB through unchanged")
@@ -259,15 +299,23 @@ class Mast3rCharucoScale:
             print(f"Mast3rCharucoScale: mode=charuco, board {sx_int}x{sy_int} sq={sq_mm}mm, marker={marker_size_mm}mm, dict={aruco_dict}")
         elif board_type == "chessboard":
             board = None
-            pattern_size = (sx_int - 1, sy_int - 1)  # interior corner count
-            if pattern_size[0] < 2 or pattern_size[1] < 2:
+            max_interior = (sx_int - 1, sy_int - 1)
+            if max_interior[0] < 2 or max_interior[1] < 2:
                 raise ValueError(
                     f"Chessboard needs at least 3x3 squares (so 2x2 interior corners). Got {sx_int}x{sy_int}."
                 )
-            board_corners_mm = self._chessboard_known_corners(pattern_size, sq_mm)
+            min_dx = int(min_detect_squares_x) if int(min_detect_squares_x) > 0 else sx_int
+            min_dy = int(min_detect_squares_y) if int(min_detect_squares_y) > 0 else sy_int
+            min_dx = max(min(min_dx, sx_int), 3)
+            min_dy = max(min(min_dy, sy_int), 3)
+            min_interior = (min_dx - 1, min_dy - 1)
+            sweep_enabled = min_interior != max_interior
+            board_corners_mm = None  # built per-detection in the loop
             print(
-                f"Mast3rCharucoScale: mode=chessboard, board {sx_int}x{sy_int} squares -> "
-                f"{pattern_size[0]}x{pattern_size[1]} interior corners, sq={sq_mm}mm"
+                f"Mast3rCharucoScale: mode=chessboard, board {sx_int}x{sy_int} squares, "
+                f"sq={sq_mm}mm, "
+                + (f"partial sweep down to {min_dx}x{min_dy} squares" if sweep_enabled
+                   else "full-board detection only")
             )
         else:
             raise ValueError(f"Unknown board_type {board_type!r}")
@@ -301,12 +349,28 @@ class Mast3rCharucoScale:
 
             if board_type == "charuco":
                 corners, ids = self._detect_charuco(cv2, board, gray)
+                if corners is None or ids is None:
+                    continue
+                img_known_lookup = board_corners_mm
+                detected_pattern = None
+                print(f"  {os.path.basename(fpath)}: {len(ids)} charuco corners detected")
             else:
-                corners, ids = self._detect_chessboard(cv2, gray, pattern_size)
-
-            if corners is None or ids is None:
-                continue
-            print(f"  {os.path.basename(fpath)}: {len(ids)} {board_type} corners detected")
+                if sweep_enabled:
+                    corners, detected_pattern = self._detect_chessboard_sweep(
+                        cv2, gray, max_interior, min_interior
+                    )
+                else:
+                    corners = self._detect_chessboard(cv2, gray, max_interior)
+                    detected_pattern = max_interior if corners is not None else None
+                if corners is None:
+                    continue
+                # Known corners are built fresh for the detected sub-pattern size
+                img_known_lookup = self._chessboard_known_corners(detected_pattern, sq_mm)
+                ids = np.arange(len(corners), dtype=np.int32)
+                print(
+                    f"  {os.path.basename(fpath)}: {len(ids)} chessboard corners detected "
+                    f"(pattern {detected_pattern[0]}x{detected_pattern[1]} interior)"
+                )
 
             H_m, W_m = imgs[i].shape[:2]
             sx_f = W_m / W_orig
@@ -317,7 +381,7 @@ class Mast3rCharucoScale:
             img_known = []
             for k, cid in enumerate(ids):
                 cid_int = int(cid)
-                if cid_int < 0 or cid_int >= len(board_corners_mm):
+                if cid_int < 0 or cid_int >= len(img_known_lookup):
                     continue
                 px, py = corners[k]
                 mx = int(round(px * sx_f))
@@ -328,7 +392,7 @@ class Mast3rCharucoScale:
                 if not np.all(np.isfinite(p3d)):
                     continue
                 img_measured.append(p3d)
-                img_known.append(board_corners_mm[cid_int])
+                img_known.append(img_known_lookup[cid_int])
 
             if len(img_measured) >= 2:
                 per_image_samples.append(
