@@ -42,7 +42,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "folder_path", "type": "STRING", "links": [2, 7], "slot_index": 0}
+        {"name": "folder_path", "type": "STRING", "links": [2, 7, 11], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "Mast3rFolderInput"},
       "widgets_values": [""]
@@ -62,7 +62,7 @@
       ],
       "outputs": [
         {"name": "glb_path", "type": "STRING", "links": [3], "slot_index": 0},
-        {"name": "scene", "type": "MAST3R_SCENE", "links": [6], "slot_index": 1}
+        {"name": "scene", "type": "MAST3R_SCENE", "links": [6, 10], "slot_index": 1}
       ],
       "properties": {"Node name for S&R": "Mast3rRun"},
       "widgets_values": [
@@ -114,10 +114,10 @@
       "pos": [880, 660],
       "size": [380, 320],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
-        {"name": "glb_path", "type": "STRING", "link": 4, "widget": {"name": "glb_path"}}
+        {"name": "glb_path", "type": "STRING", "link": 9, "widget": {"name": "glb_path"}}
       ],
       "outputs": [
         {"name": "glb_path", "type": "STRING", "links": [5], "slot_index": 0}
@@ -126,12 +126,31 @@
       "widgets_values": ["", "poisson", 320, 1, 2, 1, true, true, 300000, 9, 0.02, true]
     },
     {
+      "id": 9,
+      "type": "Mast3rEpipolarRefine",
+      "pos": [440, 1080],
+      "size": [380, 360],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "glb_path", "type": "STRING", "link": 4, "widget": {"name": "glb_path"}},
+        {"name": "scene", "type": "MAST3R_SCENE", "link": 10},
+        {"name": "image_folder_path", "type": "STRING", "link": 11, "widget": {"name": "image_folder_path"}}
+      ],
+      "outputs": [
+        {"name": "glb_path", "type": "STRING", "links": [9], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "Mast3rEpipolarRefine"},
+      "widgets_values": ["", "", 4000, 3.0, 21, 8, 0.4, 2, false]
+    },
+    {
       "id": 8,
       "type": "Mast3rCharucoScale",
       "pos": [880, 1010],
       "size": [380, 400],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {"name": "glb_path", "type": "STRING", "link": 5, "widget": {"name": "glb_path"}},
@@ -151,7 +170,7 @@
       "pos": [1300, 340],
       "size": [1180, 700],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {"name": "glb_path", "type": "STRING", "link": 8, "widget": {"name": "glb_path"}}
@@ -165,11 +184,14 @@
     [1, 2, 0, 4, 0, "MAST3R_MODEL"],
     [2, 3, 0, 4, 2, "STRING"],
     [3, 4, 0, 5, 0, "STRING"],
-    [4, 5, 0, 7, 0, "STRING"],
+    [4, 5, 0, 9, 0, "STRING"],
     [5, 7, 0, 8, 0, "STRING"],
     [6, 4, 1, 8, 1, "MAST3R_SCENE"],
     [7, 3, 0, 8, 2, "STRING"],
-    [8, 8, 0, 6, 0, "STRING"]
+    [8, 8, 0, 6, 0, "STRING"],
+    [9, 9, 0, 7, 0, "STRING"],
+    [10, 4, 1, 9, 1, "MAST3R_SCENE"],
+    [11, 3, 0, 9, 2, "STRING"]
   ],
   "groups": [],
   "config": {},

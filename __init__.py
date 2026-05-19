@@ -157,6 +157,17 @@ try:
 except Exception as _charuco_err:
     print(f"## MASt3R: ChArUco scale calibration node failed to load: {_charuco_err}")
 
+try:
+    from .epipolar_refine import (
+        NODE_CLASS_MAPPINGS as _EPI_CLASS_MAPPINGS,
+        NODE_DISPLAY_NAME_MAPPINGS as _EPI_DISPLAY_MAPPINGS,
+    )
+    NODE_CLASS_MAPPINGS.update(_EPI_CLASS_MAPPINGS)
+    NODE_DISPLAY_NAME_MAPPINGS.update(_EPI_DISPLAY_MAPPINGS)
+    print("## MASt3R: Epipolar refine node loaded")
+except Exception as _epi_err:
+    print(f"## MASt3R: Epipolar refine node failed to load: {_epi_err}")
+
 WEB_DIRECTORY = "./web"
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']

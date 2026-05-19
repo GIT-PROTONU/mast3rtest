@@ -157,6 +157,40 @@ class Mast3rSolidify:
                 main_name = name
         return main_name, main
 
+    def _find_main_pointcloud(self, scene):
+        """Largest faceless geometry with vertices - used when the input GLB is a point cloud."""
+        main = None
+        main_name = None
+        for name, geom in scene.geometry.items():
+            if hasattr(geom, "faces"):
+                continue
+            if not hasattr(geom, "vertices"):
+                continue
+            if main is None or len(geom.vertices) > len(main.vertices):
+                main = geom
+                main_name = name
+        return main_name, main
+
+    def _wrap_pointcloud_as_mesh(self, pc):
+        """Build a faceless trimesh.Trimesh from a PointCloud so _dense_points / Poisson can read it.
+
+        We give it a single degenerate face so the Trimesh constructor accepts it; the
+        face is never sampled because surface_samples paths check len(faces) == 0 first.
+        """
+        verts = np.asarray(pc.vertices, dtype=np.float64)
+        colors = None
+        if hasattr(pc, "colors") and pc.colors is not None and len(pc.colors) == len(verts):
+            colors = np.asarray(pc.colors, dtype=np.uint8)
+        # An empty faces array keeps it as a "vertices-only" mesh that the rest of the code
+        # handles via the len(faces) == 0 short-circuits.
+        m = trimesh.Trimesh(vertices=verts, faces=np.zeros((0, 3), dtype=np.int64), process=False)
+        if colors is not None:
+            if colors.shape[1] == 3:
+                alpha = np.full((len(colors), 1), 255, dtype=np.uint8)
+                colors = np.hstack([colors, alpha])
+            m.visual = trimesh.visual.ColorVisuals(mesh=m, vertex_colors=colors)
+        return m
+
     def _dense_points(self, source_mesh, surface_samples):
         """Return (N,3) points: source vertices + N samples across the surface."""
         verts = np.asarray(source_mesh.vertices, dtype=np.float64)
@@ -364,9 +398,24 @@ class Mast3rSolidify:
             scene = trimesh.Scene([scene])
 
         name, main = self._find_main_mesh(scene)
+        is_pointcloud_input = False
         if main is None:
-            print("Mast3rSolidify: no mesh in GLB, returning input unchanged")
-            return (glb_path,)
+            # No mesh: try point-cloud input (e.g. output of Mast3rEpipolarRefine)
+            name, pc = self._find_main_pointcloud(scene)
+            if pc is None:
+                print("Mast3rSolidify: no mesh or point cloud in GLB, returning input unchanged")
+                return (glb_path,)
+            if method in ("voxel_fill", "voxel_close", "convex_hull"):
+                pass
+            elif method not in ("poisson", "ball_pivoting"):
+                print(
+                    f"Mast3rSolidify: input is a point cloud and method={method} can't run from points. "
+                    "Switch method to 'poisson' or 'ball_pivoting'."
+                )
+                return (glb_path,)
+            main = self._wrap_pointcloud_as_mesh(pc)
+            is_pointcloud_input = True
+            print(f"Mast3rSolidify: input is point cloud '{name}' with {len(main.vertices)} verts")
 
         print(
             f"Mast3rSolidify: method={method} input verts={len(main.vertices)} faces={len(main.faces)}"
