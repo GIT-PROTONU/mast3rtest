@@ -114,6 +114,11 @@ class Mast3rCharucoScale:
                     {"default": 0, "min": 0, "max": 40, "step": 1,
                      "tooltip": "[chessboard only] Same as min_detect_squares_x for the Y axis. Tip: set both to 4 to detect any 4x4-or-bigger contiguous chessboard region."},
                 ),
+                "solve_method": (
+                    ["pnp", "pairwise"],
+                    {"default": "pnp",
+                     "tooltip": "pnp = solve each detection with cv2.solvePnP at full image res, compare PnP camera positions to MASt3R camera positions (robust to small boards). pairwise = look up MASt3R per-pixel pts3d at each corner (fragile when the board occupies few MASt3R pixels)."},
+                ),
             },
         }
 
@@ -211,6 +216,73 @@ class Mast3rCharucoScale:
         pts = np.stack([xs.ravel(), ys.ravel(), np.zeros(nx * ny)], axis=-1).astype(np.float64)
         return pts * float(square_size_mm)
 
+    def _build_K_full(self, H_low, W_low, H_full, W_full, f_low):
+        fx = float(f_low) * (W_full / W_low)
+        fy = float(f_low) * (H_full / H_low)
+        return np.array(
+            [[fx, 0.0, W_full / 2.0],
+             [0.0, fy, H_full / 2.0],
+             [0.0, 0.0, 1.0]],
+            dtype=np.float64,
+        )
+
+    def _solve_pnp(self, cv2, K_full, known_mm, pts_2d_full):
+        """Return camera position in BOARD frame in mm, or None if PnP fails."""
+        known_mm = np.asarray(known_mm, dtype=np.float32).reshape(-1, 1, 3)
+        pts_2d = np.asarray(pts_2d_full, dtype=np.float32).reshape(-1, 1, 2)
+        if len(known_mm) < 4:
+            return None
+        try:
+            ret, rvec, tvec = cv2.solvePnP(
+                known_mm, pts_2d, K_full.astype(np.float64), None,
+                flags=cv2.SOLVEPNP_ITERATIVE,
+            )
+        except cv2.error:
+            return None
+        if not ret:
+            return None
+        R_bc, _ = cv2.Rodrigues(rvec)
+        t_bc = tvec.ravel().astype(np.float64)
+        # Camera origin in board frame: -R_bc^T @ t_bc
+        return -(R_bc.T @ t_bc)
+
+    def _solve_scale_pnp(self, per_image_cam_in_board_mm, poses, mad_k):
+        """Compute scale from PnP-derived camera-in-board distances vs MASt3R world-frame camera-distances.
+
+        per_image_cam_in_board_mm: dict {img_idx: (3,) cam position in board frame, in mm}
+        poses: (N, 4, 4) cam-to-world
+        Returns (scale_mm_per_unit, rel_std, n_kept_pairs, n_total_pairs).
+        """
+        keys = sorted(per_image_cam_in_board_mm.keys())
+        if len(keys) < 2:
+            raise ValueError("PnP scale needs detections in at least 2 images.")
+        cams_world = {i: np.asarray(poses[i], dtype=np.float64)[:3, 3] for i in keys}
+
+        ratios = []
+        for ii in range(len(keys)):
+            for jj in range(ii + 1, len(keys)):
+                i, j = keys[ii], keys[jj]
+                d_mm = float(np.linalg.norm(
+                    per_image_cam_in_board_mm[i] - per_image_cam_in_board_mm[j]
+                ))
+                d_world = float(np.linalg.norm(cams_world[i] - cams_world[j]))
+                if d_mm > 1e-9 and d_world > 1e-9:
+                    ratios.append(d_mm / d_world)
+        if not ratios:
+            raise ValueError("All PnP camera-pair distances were degenerate.")
+        ratios = np.asarray(ratios, dtype=np.float64)
+        total = len(ratios)
+        median = float(np.median(ratios))
+        if mad_k > 0 and len(ratios) > 4:
+            mad = float(np.median(np.abs(ratios - median))) or 1e-12
+            keep = np.abs(ratios - median) < (mad_k * mad)
+            if keep.sum() >= 2:
+                ratios = ratios[keep]
+                median = float(np.median(ratios))
+        kept = len(ratios)
+        rel_std = float(np.std(ratios) / median) if median > 0 else float("inf")
+        return median, rel_std, kept, total
+
     def _solve_scale_within_image(self, per_image_samples, mad_k):
         """Compute scale (mm per MASt3R unit) from within-image pairwise distance ratios.
 
@@ -266,6 +338,7 @@ class Mast3rCharucoScale:
         enabled=True,
         min_detect_squares_x=0,
         min_detect_squares_y=0,
+        solve_method="pnp",
     ):
         if not enabled:
             print("Mast3rCharucoScale: disabled, passing GLB through unchanged")
@@ -336,6 +409,7 @@ class Mast3rCharucoScale:
             )
 
         per_image_samples = []
+        per_image_pnp = {}  # img_idx -> cam position in board frame (mm)
         total_corner_samples = 0
 
         for i in range(min(len(filelist), n_scene_imgs)):
@@ -346,6 +420,7 @@ class Mast3rCharucoScale:
                 continue
             gray = cv2.cvtColor(img_orig, cv2.COLOR_BGR2GRAY)
             H_orig, W_orig = gray.shape
+            f_low_i = float(np.asarray(focals[i]).reshape(-1)[0])
 
             if board_type == "charuco":
                 corners, ids = self._detect_charuco(cv2, board, gray)
@@ -400,28 +475,63 @@ class Mast3rCharucoScale:
                 )
                 total_corner_samples += len(img_measured)
 
-        if not per_image_samples:
+            # PnP at full-resolution. Uses ALL detected corners (not just those with
+            # finite pts3d), since PnP doesn't read MASt3R's per-pixel pts3d at all.
+            if len(corners) >= 4:
+                H_low, W_low = imgs[i].shape[:2]
+                K_full = self._build_K_full(H_low, W_low, H_orig, W_orig, f_low_i)
+                # Filter to valid known indices
+                valid_ids = (ids >= 0) & (ids < len(img_known_lookup))
+                if valid_ids.sum() >= 4:
+                    cam_in_board_mm = self._solve_pnp(
+                        cv2,
+                        K_full,
+                        img_known_lookup[ids[valid_ids].astype(int)],
+                        corners[valid_ids],
+                    )
+                    if cam_in_board_mm is not None:
+                        per_image_pnp[i] = cam_in_board_mm
+
+        if not per_image_samples and not per_image_pnp:
             raise ValueError(
                 f"Mast3rCharucoScale: no {board_type} detected in any image. "
                 "Check: (1) board dimensions squares_x/squares_y, "
                 f"(2) {'aruco_dict matches the printed board' if board_type == 'charuco' else 'the full chessboard is visible and not too oblique'}, "
                 "(3) the board is in focus and well-lit."
             )
-        if total_corner_samples < 4:
-            raise ValueError(
-                f"Mast3rCharucoScale: only {total_corner_samples} valid 3D-corner samples (need >=4). "
-                "Try shooting closer or with more board coverage."
+
+        solve_method_used = solve_method
+        if solve_method == "pnp":
+            if len(per_image_pnp) >= 2:
+                scale_mm_per_unit, rel_std, kept, total = self._solve_scale_pnp(
+                    per_image_pnp, poses, float(outlier_mad_k)
+                )
+                print(
+                    f"Mast3rCharucoScale: method=PnP, {len(per_image_pnp)} cameras solved, "
+                    f"{kept}/{total} pair-ratios kept; scale = {scale_mm_per_unit:.6f} mm/MASt3R-unit "
+                    f"(rel-std {rel_std * 100:.2f}%)"
+                )
+            else:
+                print(
+                    f"  WARN: PnP needs >=2 detections (got {len(per_image_pnp)}). "
+                    "Falling back to pairwise."
+                )
+                solve_method_used = "pairwise"
+
+        if solve_method_used == "pairwise":
+            if total_corner_samples < 4:
+                raise ValueError(
+                    f"Mast3rCharucoScale: only {total_corner_samples} valid 3D-corner samples "
+                    "(need >=4 for pairwise). Try shooting closer or with more board coverage."
+                )
+            scale_mm_per_unit, rel_std, kept, total = self._solve_scale_within_image(
+                per_image_samples, float(outlier_mad_k)
             )
-
-        scale_mm_per_unit, rel_std, kept, total = self._solve_scale_within_image(
-            per_image_samples, float(outlier_mad_k)
-        )
-
-        print(
-            f"Mast3rCharucoScale: samples={total_corner_samples} from {len(per_image_samples)} images; "
-            f"scale = {scale_mm_per_unit:.6f} mm / MASt3R-unit "
-            f"(rel-std {rel_std * 100:.2f}%, kept {kept}/{total} pairs)"
-        )
+            print(
+                f"Mast3rCharucoScale: method=pairwise, samples={total_corner_samples} "
+                f"from {len(per_image_samples)} images; scale = {scale_mm_per_unit:.6f} mm/MASt3R-unit "
+                f"(rel-std {rel_std * 100:.2f}%, kept {kept}/{total} pairs)"
+            )
 
         if rel_std > 0.15:
             print(

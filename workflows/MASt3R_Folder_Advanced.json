@@ -162,7 +162,7 @@
         {"name": "scale_factor", "type": "FLOAT", "links": null, "slot_index": 1}
       ],
       "properties": {"Node name for S&R": "Mast3rCharucoScale"},
-      "widgets_values": ["", "", "chessboard", 8, 8, 25.0, 18.0, "DICT_5X5_100", "mm", 3.0, true, 4, 4]
+      "widgets_values": ["", "", "chessboard", 8, 8, 25.0, 18.0, "DICT_5X5_100", "mm", 3.0, true, 4, 4, "pnp"]
     },
     {
       "id": 6,
