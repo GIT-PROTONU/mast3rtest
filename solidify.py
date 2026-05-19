@@ -8,18 +8,19 @@ import trimesh
 class Mast3rSolidify:
     """Turn the MASt3R surface mesh into a denser/more-solid mesh.
 
-    Modes:
-      passthrough  — no change.
-      voxel_fill   — voxelize the point cloud and thicken each point. Plugs
-                     small holes between adjacent samples without trying to
-                     close large gaps.
-      voxel_close  — voxel_fill plus morphological closing. Fills bigger
-                     gaps; produces a near-watertight surface in most cases.
-      convex_hull  — wraps the whole point cloud in a convex shell. Useful
-                     as a fallback or for simple convex objects only.
+    Methods (cheap -> high quality):
+      passthrough    no change.
+      convex_hull    wraps the whole point cloud in a convex shell.
+      voxel_fill     voxelize and thicken each sample. Plugs small holes.
+      voxel_close    voxel_fill plus morphological closing. Near-watertight.
+      poisson        Screened Poisson surface reconstruction (pymeshlab).
+                     Best detail-vs-smoothness tradeoff for noisy clouds.
+      ball_pivoting  Ball-Pivoting reconstruction (pymeshlab). Sharper than
+                     Poisson; leaves real holes intact (not watertight).
 
-    Vertex colors from the original mesh are transferred to the new surface
-    by nearest-neighbor lookup so the photometric look is preserved.
+    Voxel and reconstruction methods sample the source mesh *surface*
+    (not just vertex positions) to preserve detail that lives between
+    samples. Vertex colors are transferred via nearest neighbor.
     """
 
     @classmethod
@@ -28,17 +29,24 @@ class Mast3rSolidify:
             "required": {
                 "glb_path": ("STRING", {"default": "", "forceInput": True}),
                 "method": (
-                    ["passthrough", "voxel_fill", "voxel_close", "convex_hull"],
-                    {"default": "voxel_close"},
+                    [
+                        "passthrough",
+                        "voxel_fill",
+                        "voxel_close",
+                        "convex_hull",
+                        "poisson",
+                        "ball_pivoting",
+                    ],
+                    {"default": "poisson"},
                 ),
                 "voxel_resolution": (
                     "INT",
                     {
-                        "default": 220,
+                        "default": 320,
                         "min": 30,
-                        "max": 600,
+                        "max": 1024,
                         "step": 10,
-                        "tooltip": "Voxel grid resolution along the longest axis. Higher = more detail, more memory (600^3 ~= 200MB).",
+                        "tooltip": "Voxel grid resolution along the longest axis. Higher = more detail, more memory. 1024^3 ~= 1GB.",
                     },
                 ),
                 "dilation": (
@@ -54,7 +62,7 @@ class Mast3rSolidify:
                 "closing": (
                     "INT",
                     {
-                        "default": 3,
+                        "default": 2,
                         "min": 0,
                         "max": 15,
                         "step": 1,
@@ -64,11 +72,11 @@ class Mast3rSolidify:
                 "smooth_iterations": (
                     "INT",
                     {
-                        "default": 3,
+                        "default": 1,
                         "min": 0,
                         "max": 30,
                         "step": 1,
-                        "tooltip": "Taubin smoothing iterations on the output surface.",
+                        "tooltip": "Taubin smoothing iterations on the output surface. Keep low for poisson/ball_pivoting since they already smooth.",
                     },
                 ),
                 "keep_largest": (
@@ -83,6 +91,45 @@ class Mast3rSolidify:
                     {
                         "default": True,
                         "tooltip": "Copy vertex colors from the source mesh by nearest neighbor.",
+                    },
+                ),
+                "surface_samples": (
+                    "INT",
+                    {
+                        "default": 300000,
+                        "min": 0,
+                        "max": 4000000,
+                        "step": 10000,
+                        "tooltip": "Extra points sampled across the source mesh surface before voxelizing / reconstructing. 0 = vertices only. Higher preserves more detail.",
+                    },
+                ),
+                "poisson_depth": (
+                    "INT",
+                    {
+                        "default": 9,
+                        "min": 5,
+                        "max": 12,
+                        "step": 1,
+                        "tooltip": "Octree depth for Poisson. 8 = smooth, 9 = balanced, 10-11 = fine detail (slow, RAM-heavy).",
+                    },
+                ),
+                "density_quantile": (
+                    "FLOAT",
+                    {
+                        "default": 0.02,
+                        "min": 0.0,
+                        "max": 0.5,
+                        "step": 0.01,
+                        "tooltip": "Poisson only: crop vertices below this density quantile to remove balloon artifacts in empty regions. 0 disables.",
+                    },
+                ),
+                "enabled": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "label_on": "on",
+                        "label_off": "off",
+                        "tooltip": "Master on/off. When off the input GLB is passed through unchanged.",
                     },
                 ),
             },
@@ -110,7 +157,20 @@ class Mast3rSolidify:
                 main_name = name
         return main_name, main
 
-    def _voxelize_and_meshify(self, source_mesh, resolution, dilation, closing):
+    def _dense_points(self, source_mesh, surface_samples):
+        """Return (N,3) points: source vertices + N samples across the surface."""
+        verts = np.asarray(source_mesh.vertices, dtype=np.float64)
+        if surface_samples <= 0 or len(source_mesh.faces) == 0:
+            return verts
+        try:
+            sampled, _ = trimesh.sample.sample_surface(source_mesh, int(surface_samples))
+            print(f"  sampled {len(sampled)} extra surface points")
+            return np.vstack([verts, np.asarray(sampled, dtype=np.float64)])
+        except Exception as e:
+            print(f"  surface sampling failed ({e}), using vertices only")
+            return verts
+
+    def _voxelize_and_meshify(self, source_mesh, resolution, dilation, closing, surface_samples):
         from scipy.ndimage import binary_dilation, binary_closing
 
         try:
@@ -122,12 +182,12 @@ class Mast3rSolidify:
                 f"(original error: {e})"
             )
 
-        verts = np.asarray(source_mesh.vertices, dtype=np.float64)
-        if len(verts) == 0:
+        pts = self._dense_points(source_mesh, surface_samples)
+        if len(pts) == 0:
             return source_mesh
 
-        bbox_min = verts.min(axis=0)
-        bbox_max = verts.max(axis=0)
+        bbox_min = pts.min(axis=0)
+        bbox_max = pts.max(axis=0)
         extent = bbox_max - bbox_min
         longest = float(extent.max())
         if longest <= 0:
@@ -138,13 +198,13 @@ class Mast3rSolidify:
         bbox_min = bbox_min - pitch * pad_voxels
         bbox_max = bbox_max + pitch * pad_voxels
         dims = np.ceil((bbox_max - bbox_min) / pitch).astype(int)
-        dims = np.clip(dims, 4, 600)
+        dims = np.clip(dims, 4, 1024)
         print(
             f"Mast3rSolidify: voxelizing into grid {tuple(int(d) for d in dims)} "
             f"(pitch={pitch:.5f} world-units, ~{int(dims.prod())} voxels)"
         )
 
-        vox = ((verts - bbox_min) / pitch).astype(int)
+        vox = ((pts - bbox_min) / pitch).astype(int)
         vox = np.clip(vox, 0, dims - 1)
         grid = np.zeros(tuple(dims), dtype=bool)
         grid[vox[:, 0], vox[:, 1], vox[:, 2]] = True
@@ -158,16 +218,95 @@ class Mast3rSolidify:
             return source_mesh
 
         verts_m, faces_m, _, _ = marching_cubes(grid.astype(np.float32), level=0.5)
-        # Marching cubes returns vertices in (i, j, k) voxel indices.
         verts_world = verts_m * pitch + bbox_min
 
-        new_mesh = trimesh.Trimesh(
+        return trimesh.Trimesh(
             vertices=verts_world,
             faces=faces_m,
             process=True,
             validate=True,
         )
-        return new_mesh
+
+    def _require_pymeshlab(self, method_name):
+        try:
+            import pymeshlab
+            return pymeshlab
+        except ImportError as e:
+            raise RuntimeError(
+                f"Mast3rSolidify: method '{method_name}' needs pymeshlab. Install with:\n"
+                "  python_embeded\\python.exe -m pip install pymeshlab\n"
+                f"(original error: {e})"
+            )
+
+    def _pcd_meshset(self, pymeshlab, source_mesh, surface_samples):
+        """Build a pymeshlab MeshSet containing a point cloud (with normals) sampled from source_mesh."""
+        pts = self._dense_points(source_mesh, surface_samples).astype(np.float64)
+        ms = pymeshlab.MeshSet()
+        ms.add_mesh(pymeshlab.Mesh(vertex_matrix=pts), "points")
+        try:
+            ms.compute_normal_for_point_clouds(k=16, smoothiter=2)
+        except Exception as e:
+            print(f"  normal estimation failed: {e}")
+        return ms
+
+    def _poisson_meshify(self, source_mesh, depth, density_quantile, surface_samples):
+        pymeshlab = self._require_pymeshlab("poisson")
+        ms = self._pcd_meshset(pymeshlab, source_mesh, surface_samples)
+        print(f"  screened poisson depth={depth}")
+        ms.generate_surface_reconstruction_screened_poisson(
+            depth=int(depth),
+            samplespernode=1.5,
+            pointweight=4.0,
+            iters=8,
+            preclean=True,
+        )
+        out = ms.current_mesh()
+        verts = np.asarray(out.vertex_matrix(), dtype=np.float64)
+        faces = np.asarray(out.face_matrix(), dtype=np.int64)
+        if len(faces) == 0:
+            return source_mesh
+
+        # pymeshlab's screened Poisson stores per-vertex density in the vertex
+        # scalar (quality) array. Crop low-density verts to kill balloons.
+        if density_quantile > 0:
+            try:
+                density = np.asarray(out.vertex_scalar_array())
+                if len(density) == len(verts) and len(density) > 0:
+                    threshold = float(np.quantile(density, density_quantile))
+                    keep = density > threshold
+                    removed = int((~keep).sum())
+                    if removed > 0 and keep.sum() > 100:
+                        # Remap faces so they only reference kept vertices.
+                        new_idx = -np.ones(len(verts), dtype=np.int64)
+                        new_idx[keep] = np.arange(keep.sum())
+                        face_keep = keep[faces].all(axis=1)
+                        faces = new_idx[faces[face_keep]]
+                        verts = verts[keep]
+                        print(f"  cropped {removed} low-density verts (q={density_quantile:.2f})")
+            except Exception as e:
+                print(f"  density crop skipped: {e}")
+
+        if len(faces) == 0:
+            return source_mesh
+        return trimesh.Trimesh(vertices=verts, faces=faces, process=True, validate=True)
+
+    def _ball_pivoting_meshify(self, source_mesh, surface_samples):
+        pymeshlab = self._require_pymeshlab("ball_pivoting")
+        ms = self._pcd_meshset(pymeshlab, source_mesh, surface_samples)
+        # ballradius=0 lets MeshLab auto-pick from average nearest neighbor distance.
+        print("  ball pivoting (auto radius)")
+        ms.generate_surface_reconstruction_ball_pivoting(
+            ballradius=pymeshlab.PercentageValue(0.0),
+            clustering=20.0,
+            creasethr=90.0,
+            deletefaces=False,
+        )
+        out = ms.current_mesh()
+        verts = np.asarray(out.vertex_matrix(), dtype=np.float64)
+        faces = np.asarray(out.face_matrix(), dtype=np.int64)
+        if len(faces) == 0:
+            return source_mesh
+        return trimesh.Trimesh(vertices=verts, faces=faces, process=True, validate=True)
 
     def _transfer_colors(self, src_mesh, dst_mesh):
         from scipy.spatial import cKDTree
@@ -205,9 +344,17 @@ class Mast3rSolidify:
         smooth_iterations,
         keep_largest,
         transfer_colors,
+        surface_samples=300000,
+        poisson_depth=9,
+        density_quantile=0.02,
+        enabled=True,
     ):
         if not glb_path or not os.path.isfile(glb_path):
             raise FileNotFoundError(f"Mast3rSolidify: GLB not found: {glb_path!r}")
+
+        if not enabled:
+            print("Mast3rSolidify: disabled, passing GLB through unchanged")
+            return (glb_path,)
 
         if method == "passthrough":
             return (glb_path,)
@@ -222,8 +369,7 @@ class Mast3rSolidify:
             return (glb_path,)
 
         print(
-            f"Mast3rSolidify: input mesh '{name}' "
-            f"verts={len(main.vertices)} faces={len(main.faces)}"
+            f"Mast3rSolidify: method={method} input verts={len(main.vertices)} faces={len(main.faces)}"
         )
 
         if method == "convex_hull":
@@ -231,8 +377,14 @@ class Mast3rSolidify:
         elif method in ("voxel_fill", "voxel_close"):
             close = int(closing) if method == "voxel_close" else 0
             new_mesh = self._voxelize_and_meshify(
-                main, int(voxel_resolution), int(dilation), close
+                main, int(voxel_resolution), int(dilation), close, int(surface_samples)
             )
+        elif method == "poisson":
+            new_mesh = self._poisson_meshify(
+                main, int(poisson_depth), float(density_quantile), int(surface_samples)
+            )
+        elif method == "ball_pivoting":
+            new_mesh = self._ball_pivoting_meshify(main, int(surface_samples))
         else:
             new_mesh = main
 

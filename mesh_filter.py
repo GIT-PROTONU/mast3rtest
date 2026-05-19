@@ -41,6 +41,15 @@ class Mast3rMeshFilter:
                         "tooltip": "0 disables. Otherwise drop vertices farther than N stddev from the centroid.",
                     },
                 ),
+                "enabled": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "label_on": "on",
+                        "label_off": "off",
+                        "tooltip": "Master on/off. When off the input GLB is passed through unchanged.",
+                    },
+                ),
             },
         }
 
@@ -91,9 +100,14 @@ class Mast3rMeshFilter:
         fix_normals,
         merge_close_vertices,
         outlier_std,
+        enabled=True,
     ):
         if not glb_path or not os.path.isfile(glb_path):
             raise FileNotFoundError(f"Mast3rMeshFilter: GLB not found: {glb_path!r}")
+
+        if not enabled:
+            print("Mast3rMeshFilter: disabled, passing GLB through unchanged")
+            return (glb_path,)
 
         scene = trimesh.load(glb_path, force=None)
         if not isinstance(scene, trimesh.Scene):
